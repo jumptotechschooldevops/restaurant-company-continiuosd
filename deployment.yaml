@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: restaurant-company
+  labels:
+    app: restaurant-company
+
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: restaurant-company
+
+  template:
+    metadata:
+      labels:
+        app: restaurant-company
+
+    spec:
+      containers:
+        - name: restaurant-company
+
+          image: 459532536656.dkr.ecr.us-east-1.amazonaws.com/restaurant-company:sha256:2ac8984c55717bac826ba61972b7f38713cbadc584cb7d78245905c78e4def32
+
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 80
+
+          # Kubernetes checks if the application
+          # is ready to receive traffic
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # Kubernetes checks if the application
+          # is still alive
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
