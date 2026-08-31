@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION     = 'us-east-1'
-        EKS_CLUSTER    = 'restaurant-eks-cluster'
+        AWS_REGION     = 'us-east-2'
+        EKS_CLUSTER    = 'restaurant-company'
         ECR_REPOSITORY = 'restaurant-company'
 
         // CHANGE THIS

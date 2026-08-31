@@ -22,7 +22,7 @@ spec:
       containers:
         - name: restaurant-company
 
-          image: 459532536656.dkr.ecr.us-east-1.amazonaws.com/restaurant-company:sha256:2ac8984c55717bac826ba61972b7f38713cbadc584cb7d78245905c78e4def32
+          image: 288673275952.dkr.ecr.us-east-2.amazonaws.com/restaurant-company:sha256:b0db947730844aaac2be13d8aec66ecc13220a93df57c224a98e36aeaf8ae9d9
 
           imagePullPolicy: Always
 
