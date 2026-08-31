@@ -7,8 +7,10 @@ metadata:
     app: restaurant-company
 
 spec:
+  # Run 2 copies of the application
   replicas: 2
 
+  # Deployment manages Pods with this label
   selector:
     matchLabels:
       app: restaurant-company
@@ -22,39 +24,49 @@ spec:
       containers:
         - name: restaurant-company
 
-          image: 288673275952.dkr.ecr.us-east-2.amazonaws.com/restaurant-company:sha256:b0db947730844aaac2be13d8aec66ecc13220a93df57c224a98e36aeaf8ae9d9
+          # Docker image stored in AWS ECR
+          # Jenkins can update this image during CD
+          image: 288673275952.dkr.ecr.us-east-2.amazonaws.com/restaurant-company:latest
 
+          # Always check ECR for the latest image
           imagePullPolicy: Always
 
+          # nginx inside the container listens on port 80
           ports:
-            - containerPort: 80
+            - name: http
+              containerPort: 80
+              protocol: TCP
 
-          # Kubernetes checks if the application
-          # is ready to receive traffic
+          # Check whether the application is ready
+          # to receive traffic
           readinessProbe:
             httpGet:
-              path: /health
+              path: /
               port: 80
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
 
-          # Kubernetes checks if the application
-          # is still alive
+          # Check whether the application is still alive
           livenessProbe:
             httpGet:
-              path: /health
+              path: /
               port: 80
             initialDelaySeconds: 15
             periodSeconds: 20
             timeoutSeconds: 3
             failureThreshold: 3
 
+          # Resource configuration
           resources:
             requests:
               cpu: "100m"
               memory: "128Mi"
+
             limits:
               cpu: "250m"
               memory: "256Mi"
+
+      # Give Kubernetes time to terminate the container cleanly
+      terminationGracePeriodSeconds: 30
