@@ -2,186 +2,153 @@ pipeline {
     agent any
 
     environment {
-        // Jenkins on macOS may not automatically see Homebrew binaries
+        // Homebrew tools on your Mac
         PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
-        // AWS / EKS configuration
+        // AWS / EKS
         AWS_REGION = "us-east-2"
         EKS_CLUSTER_NAME = "restaurant-company"
 
-        // ECR configuration
+        // ECR
         AWS_ACCOUNT_ID = "288673275952"
         ECR_REPOSITORY = "restaurant-company"
 
-        // Docker image deployed to Kubernetes
+        // Image produced by CI
         IMAGE = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest"
     }
 
     stages {
 
         // =====================================================
-        // 1. VERIFY REQUIRED TOOLS
+        // 1. VERIFY TOOLS
         // =====================================================
         stage('1. Verify Tools') {
             steps {
                 sh '''
-                    echo "=========================================="
-                    echo "VERIFYING JENKINS TOOLS"
-                    echo "=========================================="
-
-                    echo "AWS CLI:"
+                    echo "===== AWS CLI ====="
                     which aws
                     aws --version
 
-                    echo ""
-
-                    echo "kubectl:"
+                    echo "===== KUBECTL ====="
                     which kubectl
                     kubectl version --client
-
-                    echo "=========================================="
                 '''
             }
         }
 
         // =====================================================
-        // 2. VERIFY AWS CONNECTION
+        // 2. VERIFY AWS CREDENTIALS
         // =====================================================
         stage('2. Verify AWS') {
             steps {
-                sh '''
-                    echo "=========================================="
-                    echo "VERIFYING AWS CONNECTION"
-                    echo "=========================================="
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'aws-credentials',
+                        usernameVariable: 'AWS_ACCESS_KEY_ID',
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                    )
+                ]) {
+                    sh '''
+                        echo "===== AWS IDENTITY ====="
 
-                    aws sts get-caller-identity
-
-                    echo "=========================================="
-                '''
+                        aws sts get-caller-identity \
+                          --region ${AWS_REGION}
+                    '''
+                }
             }
         }
 
         // =====================================================
-        // 3. CONNECT JENKINS TO EKS
+        // 3. CONNECT TO EKS
         // =====================================================
         stage('3. Connect to EKS') {
             steps {
-                sh '''
-                    echo "=========================================="
-                    echo "CONNECTING TO EKS"
-                    echo "=========================================="
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'aws-credentials',
+                        usernameVariable: 'AWS_ACCESS_KEY_ID',
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                    )
+                ]) {
+                    sh '''
+                        echo "===== CONNECTING TO EKS ====="
 
-                    aws eks update-kubeconfig \
-                      --region ${AWS_REGION} \
-                      --name ${EKS_CLUSTER_NAME}
+                        aws eks update-kubeconfig \
+                          --region ${AWS_REGION} \
+                          --name ${EKS_CLUSTER_NAME}
 
-                    echo ""
-                    echo "Current Kubernetes context:"
-                    kubectl config current-context
+                        echo "===== CURRENT CONTEXT ====="
+                        kubectl config current-context
 
-                    echo ""
-                    echo "EKS Nodes:"
-                    kubectl get nodes
-
-                    echo "=========================================="
-                '''
+                        echo "===== EKS NODES ====="
+                        kubectl get nodes
+                    '''
+                }
             }
         }
 
         // =====================================================
-        // 4. DEPLOY KUBERNETES MANIFESTS
+        // 4. DEPLOY MANIFESTS
         // =====================================================
         stage('4. Deploy to EKS') {
             steps {
                 sh '''
-                    echo "=========================================="
-                    echo "DEPLOYING KUBERNETES RESOURCES"
-                    echo "=========================================="
-
-                    echo "Applying deployment.yaml..."
+                    echo "===== APPLY DEPLOYMENT ====="
                     kubectl apply -f deployment.yaml
 
-                    echo ""
-                    echo "Applying service.yaml..."
+                    echo "===== APPLY SERVICE ====="
                     kubectl apply -f service.yaml
-
-                    echo "=========================================="
                 '''
             }
         }
 
         // =====================================================
-        // 5. UPDATE APPLICATION IMAGE
+        // 5. UPDATE IMAGE
         // =====================================================
         stage('5. Update Image') {
             steps {
                 sh '''
-                    echo "=========================================="
-                    echo "UPDATING APPLICATION IMAGE"
-                    echo "=========================================="
-
-                    echo "Image:"
+                    echo "===== IMAGE ====="
                     echo "${IMAGE}"
 
                     kubectl set image \
                       deployment/restaurant-company \
                       restaurant-company=${IMAGE}
-
-                    echo "=========================================="
                 '''
             }
         }
 
         // =====================================================
-        // 6. WAIT FOR KUBERNETES ROLLOUT
+        // 6. WAIT FOR DEPLOYMENT
         // =====================================================
         stage('6. Wait for Rollout') {
             steps {
                 sh '''
-                    echo "=========================================="
-                    echo "WAITING FOR DEPLOYMENT"
-                    echo "=========================================="
+                    echo "===== WAITING FOR ROLLOUT ====="
 
                     kubectl rollout status \
                       deployment/restaurant-company \
                       --timeout=300s
-
-                    echo "=========================================="
                 '''
             }
         }
 
         // =====================================================
-        // 7. VERIFY DEPLOYMENT
+        // 7. VERIFY
         // =====================================================
         stage('7. Verify Deployment') {
             steps {
                 sh '''
-                    echo "=========================================="
-                    echo "PODS"
-                    echo "=========================================="
-
+                    echo "===== PODS ====="
                     kubectl get pods -o wide
 
-                    echo ""
-                    echo "=========================================="
-                    echo "DEPLOYMENT"
-                    echo "=========================================="
-
+                    echo "===== DEPLOYMENT ====="
                     kubectl get deployment restaurant-company
 
-                    echo ""
-                    echo "=========================================="
-                    echo "SERVICE"
-                    echo "=========================================="
-
+                    echo "===== SERVICE ====="
                     kubectl get service restaurant-company
 
-                    echo ""
-                    echo "=========================================="
-                    echo "LOAD BALANCER"
-                    echo "=========================================="
-
+                    echo "===== LOAD BALANCER ====="
                     kubectl get service restaurant-company \
                       -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' || true
 
@@ -196,15 +163,12 @@ pipeline {
         success {
             echo '''
 ==========================================
-RESTAURANT COMPANY CD PIPELINE PASSED
+RESTAURANT COMPANY CD PASSED
 ==========================================
-1. Jenkins tools verified
-2. AWS connection verified
-3. Jenkins connected to EKS
-4. Kubernetes manifests applied
-5. ECR image deployed
-6. Kubernetes rollout completed
-7. Deployment verified
+AWS Authentication: PASSED
+EKS Connection:      PASSED
+Deployment:          PASSED
+Service:             PASSED
 ==========================================
 '''
         }
@@ -212,33 +176,11 @@ RESTAURANT COMPANY CD PIPELINE PASSED
         failure {
             echo '''
 ==========================================
-RESTAURANT COMPANY DEPLOYMENT FAILED
+RESTAURANT COMPANY CD FAILED
+==========================================
+Check the failed stage above.
 ==========================================
 '''
-
-            sh '''
-                if command -v kubectl >/dev/null 2>&1; then
-
-                    echo "========== PODS =========="
-                    kubectl get pods -o wide || true
-
-                    echo ""
-                    echo "========== DEPLOYMENT =========="
-                    kubectl get deployment restaurant-company || true
-
-                    echo ""
-                    echo "========== SERVICE =========="
-                    kubectl get service restaurant-company || true
-
-                    echo ""
-                    echo "========== RECENT EVENTS =========="
-                    kubectl get events \
-                      --sort-by=.lastTimestamp 2>/dev/null | tail -30 || true
-
-                else
-                    echo "kubectl is not available to Jenkins."
-                fi
-            '''
         }
     }
 }
