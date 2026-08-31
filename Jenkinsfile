@@ -33,9 +33,11 @@ pipeline {
         }
 
         // =====================================================
-        // 2. VERIFY AWS
+        // 2. AWS + EKS + DEPLOYMENT
+        // Keep AWS credentials available for ALL kubectl commands
         // =====================================================
-        stage('2. Verify AWS') {
+        stage('2. Deploy to AWS EKS') {
+
             steps {
 
                 withCredentials([
@@ -48,137 +50,115 @@ pipeline {
                 ]) {
 
                     sh '''
-                        echo "===== AWS IDENTITY ====="
+                        set -e
 
-                        aws sts get-caller-identity \
-                          --region ${AWS_REGION}
-                    '''
-                }
-            }
-        }
+                        echo "=========================================="
+                        echo "AWS IDENTITY"
+                        echo "=========================================="
 
-        // =====================================================
-        // 3. CONNECT TO EKS
-        // =====================================================
-        stage('3. Connect to EKS') {
-            steps {
+                        aws sts get-caller-identity
 
-                withCredentials([
-                    [
-                        $class: 'AmazonWebServicesCredentialsBinding',
-                        credentialsId: 'aws-credentials',
-                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                    ]
-                ]) {
 
-                    sh '''
-                        echo "===== CONNECTING TO EKS ====="
+                        echo ""
+                        echo "=========================================="
+                        echo "CONNECTING TO EKS"
+                        echo "=========================================="
 
                         aws eks update-kubeconfig \
                           --region ${AWS_REGION} \
                           --name ${EKS_CLUSTER_NAME}
 
+
                         echo ""
-                        echo "===== CURRENT KUBERNETES CONTEXT ====="
+                        echo "=========================================="
+                        echo "CURRENT KUBERNETES CONTEXT"
+                        echo "=========================================="
 
                         kubectl config current-context
 
+
                         echo ""
-                        echo "===== EKS NODES ====="
+                        echo "=========================================="
+                        echo "EKS NODES"
+                        echo "=========================================="
 
                         kubectl get nodes
+
+
+                        echo ""
+                        echo "=========================================="
+                        echo "APPLYING DEPLOYMENT"
+                        echo "=========================================="
+
+                        kubectl apply -f deployment.yaml
+
+
+                        echo ""
+                        echo "=========================================="
+                        echo "APPLYING SERVICE"
+                        echo "=========================================="
+
+                        kubectl apply -f service.yaml
+
+
+                        echo ""
+                        echo "=========================================="
+                        echo "UPDATING APPLICATION IMAGE"
+                        echo "=========================================="
+
+                        echo "Deploying:"
+                        echo "${IMAGE}"
+
+                        kubectl set image \
+                          deployment/restaurant-company \
+                          restaurant-company=${IMAGE}
+
+
+                        echo ""
+                        echo "=========================================="
+                        echo "WAITING FOR ROLLOUT"
+                        echo "=========================================="
+
+                        kubectl rollout status \
+                          deployment/restaurant-company \
+                          --timeout=300s
+
+
+                        echo ""
+                        echo "=========================================="
+                        echo "PODS"
+                        echo "=========================================="
+
+                        kubectl get pods -o wide
+
+
+                        echo ""
+                        echo "=========================================="
+                        echo "DEPLOYMENT"
+                        echo "=========================================="
+
+                        kubectl get deployment restaurant-company
+
+
+                        echo ""
+                        echo "=========================================="
+                        echo "SERVICE"
+                        echo "=========================================="
+
+                        kubectl get service restaurant-company
+
+
+                        echo ""
+                        echo "=========================================="
+                        echo "LOAD BALANCER"
+                        echo "=========================================="
+
+                        kubectl get service restaurant-company \
+                          -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' || true
+
+                        echo ""
                     '''
                 }
-            }
-        }
-
-        // =====================================================
-        // 4. DEPLOY TO EKS
-        // =====================================================
-        stage('4. Deploy to EKS') {
-            steps {
-
-                sh '''
-                    echo "===== DEPLOYMENT ====="
-
-                    kubectl apply -f deployment.yaml
-
-                    echo ""
-                    echo "===== SERVICE ====="
-
-                    kubectl apply -f service.yaml
-                '''
-            }
-        }
-
-        // =====================================================
-        // 5. UPDATE IMAGE
-        // =====================================================
-        stage('5. Update Image') {
-            steps {
-
-                sh '''
-                    echo "===== DEPLOYING IMAGE ====="
-
-                    echo "${IMAGE}"
-
-                    kubectl set image \
-                      deployment/restaurant-company \
-                      restaurant-company=${IMAGE}
-                '''
-            }
-        }
-
-        // =====================================================
-        // 6. WAIT FOR ROLLOUT
-        // =====================================================
-        stage('6. Wait for Rollout') {
-            steps {
-
-                sh '''
-                    echo "===== WAITING FOR KUBERNETES ====="
-
-                    kubectl rollout status \
-                      deployment/restaurant-company \
-                      --timeout=300s
-                '''
-            }
-        }
-
-        // =====================================================
-        // 7. VERIFY DEPLOYMENT
-        // =====================================================
-        stage('7. Verify Deployment') {
-            steps {
-
-                sh '''
-                    echo ""
-                    echo "===== PODS ====="
-
-                    kubectl get pods -o wide
-
-
-                    echo ""
-                    echo "===== DEPLOYMENT ====="
-
-                    kubectl get deployment restaurant-company
-
-
-                    echo ""
-                    echo "===== SERVICE ====="
-
-                    kubectl get service restaurant-company
-
-
-                    echo ""
-                    echo "===== LOAD BALANCER ====="
-
-                    kubectl get service restaurant-company \
-                      -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' || true
-
-                    echo ""
-                '''
             }
         }
     }
@@ -186,7 +166,6 @@ pipeline {
     post {
 
         success {
-
             echo '''
 ==========================================
 RESTAURANT COMPANY CD PASSED
@@ -202,13 +181,12 @@ Service:             PASSED
         }
 
         failure {
-
             echo '''
 ==========================================
 RESTAURANT COMPANY CD FAILED
 ==========================================
 
-Check the failed stage above.
+Check the failed command above.
 
 ==========================================
 '''
