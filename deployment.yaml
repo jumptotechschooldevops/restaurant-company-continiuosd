@@ -1,16 +1,25 @@
 apiVersion: apps/v1
 kind: Deployment
-
 metadata:
   name: restaurant-company
+  namespace: restaurant-prod
   labels:
     app: restaurant-company
+    app.kubernetes.io/name: restaurant-company
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: restaurant-company
 
 spec:
-  # Run 2 copies of the application
-  replicas: 2
+  replicas: 3
 
-  # Deployment manages Pods with this label
+  revisionHistoryLimit: 5
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
   selector:
     matchLabels:
       app: restaurant-company
@@ -19,54 +28,66 @@ spec:
     metadata:
       labels:
         app: restaurant-company
+        app.kubernetes.io/name: restaurant-company
+        app.kubernetes.io/component: frontend
 
     spec:
+      serviceAccountName: restaurant-company
+
+      terminationGracePeriodSeconds: 30
+
       containers:
         - name: restaurant-company
 
-          # Docker image stored in AWS ECR
-          # Jenkins can update this image during CD
           image: 288673275952.dkr.ecr.us-east-2.amazonaws.com/restaurant-company:latest
 
-          # Always check ECR for the latest image
           imagePullPolicy: Always
 
-          # nginx inside the container listens on port 80
           ports:
             - name: http
               containerPort: 80
               protocol: TCP
 
-          # Check whether the application is ready
-          # to receive traffic
+          envFrom:
+            - configMapRef:
+                name: restaurant-company-config
+
           readinessProbe:
             httpGet:
-              path: /
-              port: 80
+              path: /health
+              port: http
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
+            successThreshold: 1
 
-          # Check whether the application is still alive
           livenessProbe:
             httpGet:
-              path: /
-              port: 80
+              path: /health
+              port: http
             initialDelaySeconds: 15
             periodSeconds: 20
             timeoutSeconds: 3
             failureThreshold: 3
 
-          # Resource configuration
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 12
+
           resources:
             requests:
               cpu: "100m"
               memory: "128Mi"
-
             limits:
-              cpu: "250m"
+              cpu: "500m"
               memory: "256Mi"
 
-      # Give Kubernetes time to terminate the container cleanly
-      terminationGracePeriodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
